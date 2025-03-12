@@ -1,33 +1,28 @@
-import asyncio
-from pyrogram import filters
-from pyrogram.enums import ChatMemberStatus
-from config import FORCE_SUB_CHANNEL, ADMINS
-from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
-from pyrogram.errors import FloodWait
+import os
 
-async def is_subscribed(_, client, update):
-    if not FORCE_SUB_CHANNEL:
-        return True  # No force sub needed
+API_ID = 979826  # Your API ID
+API_HASH = "238183386c30590d073b457166ba260d"  # Your API Hash
+BOT_TOKEN = "8176887548:AAELsQbL0CxdXlCuBm69WqbMA4XrSO3gOig"  # Your Bot Token
+PORT = int(os.getenv("PORT", 8080))
 
-    user_id = update.from_user.id
-    chat_id = FORCE_SUB_CHANNEL  # Using only channel ID
+# Force Subscription (Using Channel ID)
+FORCE_SUB_CHANNEL = -1001953560523  # Your Force Sub Channel ID
 
-    if user_id in ADMINS:
-        return True  # Admins bypass force sub
+# Database Channel (Where messages are stored)
+CHANNEL_ID = -1002358588449  # Your Database Channel ID
 
-    try:
-        # Check if user is a member of the channel
-        member = await client.get_chat_member(chat_id=chat_id, user_id=user_id)
-        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
-            return True  # User is subscribed
+# MongoDB Database
+DB_NAME = "madflixbotz"
+DB_URL = "mongodb+srv://ygovcu:fY1f9Wovol3NqhUX@cluster0.1mdno.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
-    except UserNotParticipant:
-        return False  # User not in channel
+# Bot Owner (Admin User ID)
+OWNER_ID = 1074804932
 
-    except Exception as e:
-        print(f"⚠️ Error checking subscription: {e}")
-        return False  # Prevent bot crashes
+# List of Bot Admins
+ADMINS = [OWNER_ID]  # Add more admin IDs if needed
 
-    return False  # If none of the above conditions pass
+# Logger
+LOGGER = True
 
-subscribed = filters.create(is_subscribed)
+# Workers (How many messages to process at once)
+TG_BOT_WORKERS = 10
