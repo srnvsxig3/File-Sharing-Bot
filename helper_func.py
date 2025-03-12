@@ -1,47 +1,50 @@
 import base64
 import re
 import asyncio
-from pyrogram import filters
+from pyrogram import Client, filters
 from pyrogram.enums import ChatMemberStatus
-from config import FORCE_SUB_CHANNEL, ADMINS
-from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
-from pyrogram.errors import FloodWait
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from config import FORCE_SUB_CHANNEL_ID, ADMINS
+from pyrogram.errors import UserNotParticipant, FloodWait
 
+# Ensure FORCE_SUB_CHANNEL_ID is an integer (e.g., -100123456789)
+if isinstance(FORCE_SUB_CHANNEL_ID, str):
+    FORCE_SUB_CHANNEL_ID = int(FORCE_SUB_CHANNEL_ID)
 
-
-
+# Function to check if a user is subscribed
 async def is_subscribed(filter, client, update):
-    if not FORCE_SUB_CHANNEL:
+    if not FORCE_SUB_CHANNEL_ID:
         return True
     user_id = update.from_user.id
     if user_id in ADMINS:
         return True
     try:
-        member = await client.get_chat_member(chat_id = FORCE_SUB_CHANNEL, user_id = user_id)
+        member = await client.get_chat_member(chat_id=FORCE_SUB_CHANNEL_ID, user_id=user_id)
+        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+            return True
+        else:
+            return False
     except UserNotParticipant:
         return False
-
-    if not member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+    except Exception as e:
+        print(f"Error checking subscription: {e}")
         return False
-    else:
-        return True 
 
-
+# Encoding & Decoding Functions
 async def encode(string):
     string_bytes = string.encode("ascii")
     base64_bytes = base64.urlsafe_b64encode(string_bytes)
     base64_string = (base64_bytes.decode("ascii")).strip("=")
     return base64_string
 
-
 async def decode(base64_string):
-    base64_string = base64_string.strip("=") # links generated before this commit will be having = sign, hence striping them to handle padding errors.
+    base64_string = base64_string.strip("=")
     base64_bytes = (base64_string + "=" * (-len(base64_string) % 4)).encode("ascii")
-    string_bytes = base64.urlsafe_b64decode(base64_bytes) 
+    string_bytes = base64.urlsafe_b64decode(base64_bytes)
     string = string_bytes.decode("ascii")
     return string
 
-
+# Function to get messages from a channel
 async def get_messages(client, message_ids):
     messages = []
     total_messages = 0
@@ -58,13 +61,14 @@ async def get_messages(client, message_ids):
                 chat_id=client.db_channel.id,
                 message_ids=temb_ids
             )
-        except:
+        except Exception as e:
+            print(f"Error fetching messages: {e}")
             pass
         total_messages += len(temb_ids)
         messages.extend(msgs)
     return messages
 
-
+# Function to extract message ID from a forwarded message or URL
 async def get_message_id(client, message):
     if message.forward_from_chat:
         if message.forward_from_chat.id == client.db_channel.id:
@@ -74,8 +78,8 @@ async def get_message_id(client, message):
     elif message.forward_sender_name:
         return 0
     elif message.text:
-        pattern = r"https://t.me/(?:c/)?(.*)/(\d+)"
-        matches = re.match(pattern,message.text)
+        pattern = r"https://t.me/(?:c/)?([-_a-zA-Z0-9]+)/(\d+)"
+        matches = re.match(pattern, message.text)
         if not matches:
             return 0
         channel_id = matches.group(1)
@@ -86,10 +90,9 @@ async def get_message_id(client, message):
         else:
             if channel_id == client.db_channel.username:
                 return msg_id
-    else:
-        return 0
+    return 0
 
-
+# Function to convert seconds to a readable time format
 def get_readable_time(seconds: int) -> str:
     count = 0
     up_time = ""
@@ -111,16 +114,29 @@ def get_readable_time(seconds: int) -> str:
     up_time += ":".join(time_list)
     return up_time
 
-
+# Create filter for checking subscription
 subscribed = filters.create(is_subscribed)
-       
 
+# Force Subscription Handler
+@Client.on_message(filters.private & ~subscribed)
+async def force_sub_message(client, message):
+    buttons = [
+        [InlineKeyboardButton("Join Channel", url=f"https://t.me/c/{FORCE_SUB_CHANNEL_ID}")],
+        [InlineKeyboardButton("Check Again", callback_data="checksub")]
+    ]
+    await message.reply_text(
+        "**🚨 You must join our channel to use this bot! 🚨**",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
-
-
-
-# Jishu Developer 
-# Don't Remove Credit 🥺
-# Telegram Channel @Madflix_Bots
-# Backup Channel @JishuBotz
-# Developer @JishuDeveloper
+# Callback handler to check subscription again
+@Client.on_callback_query(filters.regex("checksub"))
+async def check_subscription(client, query):
+    try:
+        user = await client.get_chat_member(FORCE_SUB_CHANNEL_ID, query.from_user.id)
+        if user.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+            await query.message.edit_text("✅ You have successfully joined the channel. Now you can use the bot!")
+        else:
+            await query.answer("⚠️ You haven't joined yet!", show_alert=True)
+    except:
+        await query.answer("⚠️ You haven't joined yet!", show_alert=True)
